@@ -630,6 +630,13 @@ io.on('connection', (socket) => {
     channelScreenShare.get(userData.channelId)?.delete(userData.userId);
     socket.to(userData.channelId).emit('screen-share-stopped', { userId: userData.userId });
   });
+  
+  // Typing indicator
+  socket.on('typing', (data) => {
+    const userData = users.get(socket.id);
+    if (!userData) return;
+    socket.to(userData.channelId).emit('user-typing', { userId: userData.userId, userName: userData.userName, isTyping: !!data.isTyping });
+  });
 
   // ─────────────────────────────────────────────────────────
   // RAISE HAND
@@ -661,6 +668,8 @@ io.on('connection', (socket) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData) return;
+    //Запрет самолайка
+    if (data.targetUserId === userData.userId) return;
     const chId = userData.channelId;
     const channel = channels.get(chId);
     if (!channel) return;
