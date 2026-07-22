@@ -1,10 +1,12 @@
 /**
  * ═══════════════════════════════════════════════════════════
- * PageChat Radio Pro — Signaling & Coordination Server
+ * PageChat Radio Pro — Server v3.3 (Crash-Protected)
  * ═══════════════════════════════════════════════════════════
  * Stack: Node.js + Express + Socket.io
  * License: AGPL-3.0
- * Version: 3.1.0
+ * 
+ * The server NEVER hears your voice.
+ * Audio flows P2P via WebRTC. Server only handles signaling.
  */
 
 'use strict';
@@ -13,6 +15,33 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
+
+// ═══════════════════════════════════════════════════════════
+// ГЛОБАЛЬНАЯ ЗАЩИТА ОТ ПАДЕНИЙ
+// ═══════════════════════════════════════════════════════════
+
+process.on('uncaughtException', (err) => {
+  console.error('🔥 UNCAUGHT EXCEPTION (server continues):', err.message);
+  console.error(err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥 UNHANDLED REJECTION (server continues):', reason);
+});
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+function gracefulShutdown(signal) {
+  log('🛑', `Shutdown signal: ${signal}`);
+  try { io.close(); } catch(e) {}
+  try { server.close(); } catch(e) {}
+  setTimeout(() => process.exit(0), 1000);
+}
+
+// ═══════════════════════════════════════════════════════════
+// APP SETUP
+// ═══════════════════════════════════════════════════════════
 
 const app = express();
 const server = http.createServer(app);
@@ -27,7 +56,7 @@ const io = new Server(server, {
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  maxHttpBufferSize: 2e5 // 200KB для SDP с видео
+  maxHttpBufferSize: 2e5
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -52,7 +81,7 @@ const CONFIG = {
     MAX_CHANNEL_NAME_LENGTH: 30,
     MESSAGE_HISTORY: 200,
     REQUEST_EXPIRY: 5 * 60 * 1000,
-    MAX_PAYLOAD_SIZE: 200000 // 200KB
+    MAX_PAYLOAD_SIZE: 200000
   },
   security: {
     MAX_CONNECTIONS_PER_IP: 10,
@@ -119,7 +148,27 @@ function log(icon, message) {
 
 function securityLog(event, details) {
   const time = new Date().toISOString();
-  console.warn(`[SECURITY] [${time}] ${event}: ${JSON.stringify(details)}`);
+  try {
+    console.warn(`[SECURITY] [${time}] ${event}: ${JSON.stringify(details)}`);
+  } catch(e) {
+    console.warn(`[SECURITY] [${time}] ${event}: [unserializable]`);
+  }
+}
+
+// ✅ Универсальный safe-handler: ловит ВСЕ ошибки в обработчиках
+function safeHandler(name, fn) {
+  return async (...args) => {
+    try {
+      await fn(...args);
+    } catch (err) {
+      console.error(`❌ Error in [${name}]:`, err.message);
+      console.error(err.stack);
+      const cb = args[args.length - 1];
+      if (typeof cb === 'function') {
+        try { cb({ error: `Server error: ${err.message}` }); } catch(e) {}
+      }
+    }
+  };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -127,15 +176,20 @@ function securityLog(event, details) {
 // ═══════════════════════════════════════════════════════════
 
 io.use((socket, next) => {
-  const ip = socket.handshake.address;
-  const count = ipConnections.get(ip) || 0;
-  if (count >= CONFIG.security.MAX_CONNECTIONS_PER_IP) {
-    securityLog('IP_LIMIT', { ip, count });
-    return next(new Error('Too many connections'));
+  try {
+    const ip = socket.handshake.address;
+    const count = ipConnections.get(ip) || 0;
+    if (count >= CONFIG.security.MAX_CONNECTIONS_PER_IP) {
+      securityLog('IP_LIMIT', { ip, count });
+      return next(new Error('Too many connections'));
+    }
+    ipConnections.set(ip, count + 1);
+    socket._clientIp = ip;
+    next();
+  } catch (err) {
+    console.error('❌ Middleware error:', err);
+    next(new Error('Connection error'));
   }
-  ipConnections.set(ip, count + 1);
-  socket._clientIp = ip;
-  next();
 });
 
 function checkSocketRate(socketId) {
@@ -169,11 +223,12 @@ function apiAuth(req, res, next) {
 // ═══════════════════════════════════════════════════════════
 
 app.get('/', (req, res) => {
-  let ts = 0, tl = 0;
-  channels.forEach(ch => { ts += ch.speakers.size; tl += ch.listeners.size; });
-  res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PageChat Radio Pro</title>
+  try {
+    let ts = 0, tl = 0;
+    channels.forEach(ch => { ts += ch.speakers.size; tl += ch.listeners.size; });
+    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PageChat Radio Pro</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#09090b;color:#fafafa;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 20px}.c{max-width:480px;width:100%}.h{text-align:center;margin-bottom:28px}.h h1{font-size:24px;font-weight:800;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px}.sb{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:20px;font-size:12px;color:#10b981;font-weight:600}.sd{width:7px;height:7px;background:#10b981;border-radius:50%;animation:p 2s infinite}@keyframes p{0%,100%{opacity:1}50%{opacity:.4}}.cd{background:#111114;border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:22px;margin-bottom:14px}.cd h2{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:rgba(250,250,250,.4);margin-bottom:14px;font-weight:700}.sg{display:grid;grid-template-columns:1fr 1fr;gap:10px}.st{background:#1a1a1f;border-radius:10px;padding:14px;text-align:center}.sv{font-size:22px;font-weight:800}.sl{font-size:10px;color:rgba(250,250,250,.4);margin-top:3px;text-transform:uppercase}.ll{list-style:none}.ll li{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px}.ll li:last-child{border-bottom:none}.ll .lb{color:rgba(250,250,250,.6)}.ll .vl{font-weight:700;font-family:monospace}.ub{background:#1a1a1f;border:1px solid rgba(99,102,241,.3);border-radius:10px;padding:14px;text-align:center;font-family:monospace;font-size:12px;color:#6366f1;word-break:break-all}.ft{text-align:center;font-size:10px;color:rgba(250,250,250,.25);margin-top:20px}</style></head>
-<body><div class="c"><div class="h"><h1>PageChat Radio Pro</h1><div class="sb"><div class="sd"></div>Server Online</div></div>
+<body><div class="c"><div class="h"><h1>PageChat Radio Pro</h1><div class="sb"><div class="sd"></div>Server Online v3.3</div></div>
 <div class="cd"><h2>Live Statistics</h2><div class="sg">
 <div class="st"><div class="sv">${channels.size}</div><div class="sl">Channels</div></div>
 <div class="st"><div class="sv">${users.size}</div><div class="sl">Online</div></div>
@@ -187,19 +242,27 @@ app.get('/', (req, res) => {
 <li><span class="lb">Ban duration</span><span class="vl">30 min</span></li>
 <li><span class="lb">Connections / IP</span><span class="vl">${CONFIG.security.MAX_CONNECTIONS_PER_IP}</span></li></ul></div>
 <div class="cd"><h2>Connection URL</h2><div class="ub">ws://${req.headers.host}</div></div>
-<div class="ft">PageChat Radio Pro v3.1 — P2P Voice. Server never hears you.</div></div></body></html>`);
+<div class="ft">PageChat Radio Pro v3.3 — P2P Voice. Server never hears you.</div></div></body></html>`);
+  } catch (err) {
+    console.error('❌ HTTP / error:', err);
+    res.status(500).send('Server error');
+  }
 });
 
 app.get('/api/channels', apiAuth, (req, res) => {
-  const list = [];
-  channels.forEach((ch, id) => { list.push({ id, name: ch.name, admin: ch.adminName, speakers: ch.speakers.size, listeners: ch.listeners.size, totalLikes: ch.totalLikes || 0 }); });
-  res.json(list);
+  try {
+    const list = [];
+    channels.forEach((ch, id) => { list.push({ id, name: ch.name, admin: ch.adminName, speakers: ch.speakers.size, listeners: ch.listeners.size, totalLikes: ch.totalLikes || 0 }); });
+    res.json(list);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/stats', apiAuth, (req, res) => {
-  let ts = 0, tl = 0;
-  channels.forEach(ch => { ts += ch.speakers.size; tl += ch.listeners.size; });
-  res.json({ channels: channels.size, users: users.size, speakers: ts, listeners: tl });
+  try {
+    let ts = 0, tl = 0;
+    channels.forEach(ch => { ts += ch.speakers.size; tl += ch.listeners.size; });
+    res.json({ channels: channels.size, users: users.size, speakers: ts, listeners: tl });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -207,30 +270,40 @@ app.get('/api/stats', apiAuth, (req, res) => {
 // ═══════════════════════════════════════════════════════════
 
 setInterval(() => {
-  const statuses = {};
-  channels.forEach((ch, id) => {
-    const speaking = channelSpeaking.get(id)?.size || 0;
-    const screen = channelScreenShare.get(id)?.size || 0;
-    const likes = channelLikes.get(id) || 0;
-    if (speaking > 0 || screen > 0 || likes > 0) statuses[id] = { speaking, screen, likes };
-  });
-  if (Object.keys(statuses).length > 0) io.emit('channel-statuses', statuses);
-  channelLikes.clear();
+  try {
+    const statuses = {};
+    channels.forEach((ch, id) => {
+      const speaking = channelSpeaking.get(id)?.size || 0;
+      const screen = channelScreenShare.get(id)?.size || 0;
+      const likes = channelLikes.get(id) || 0;
+      if (speaking > 0 || screen > 0 || likes > 0) statuses[id] = { speaking, screen, likes };
+    });
+    if (Object.keys(statuses).length > 0) io.emit('channel-statuses', statuses);
+    channelLikes.clear();
+  } catch (err) {
+    console.error('❌ Periodic statuses error:', err.message);
+  }
 }, 3000);
 
 setInterval(() => {
-  const now = Date.now();
-  channels.forEach((channel) => {
-    if (!channel.joinRequests) return;
-    const expired = [];
-    channel.joinRequests.forEach((req, userId) => { if (now - req.timestamp > CONFIG.limits.REQUEST_EXPIRY) expired.push(userId); });
-    expired.forEach(userId => {
-      channel.joinRequests.delete(userId);
-      const target = findUser(userId);
-      if (target) io.to(target.socketId).emit('join-request-expired', { channelId: channel.id });
+  try {
+    const now = Date.now();
+    channels.forEach((channel) => {
+      if (!channel.joinRequests) return;
+      const expired = [];
+      channel.joinRequests.forEach((req, userId) => { if (now - req.timestamp > CONFIG.limits.REQUEST_EXPIRY) expired.push(userId); });
+      expired.forEach(userId => {
+        channel.joinRequests.delete(userId);
+        const target = findUser(userId);
+        if (target) {
+          try { io.to(target.socketId).emit('join-request-expired', { channelId: channel.id }); } catch(e) {}
+        }
+      });
+      if (expired.length > 0) log('🧹', `Expired ${expired.length} request(s) in "${channel.name}"`);
     });
-    if (expired.length > 0) log('🧹', `Expired ${expired.length} request(s) in "${channel.name}"`);
-  });
+  } catch (err) {
+    console.error('❌ Periodic expiry error:', err.message);
+  }
 }, 60000);
 
 // ═══════════════════════════════════════════════════════════
@@ -243,54 +316,46 @@ io.on('connection', (socket) => {
 
   log('🔌', `Socket connected: ${socket.id}`);
 
-  // ─────────────────────────────────────────────────────────
-  // REGISTER PERSISTENT ID
-  // ─────────────────────────────────────────────────────────
-  socket.on('register-persistent', (rawData, cb) => {
+  // ── REGISTER PERSISTENT ID ──
+  socket.on('register-persistent', safeHandler('register-persistent', (rawData, cb) => {
     const data = safeData(rawData);
     const persistentId = sanitize(data.persistentId, 40);
+    if (!persistentId || persistentId.length < 5) return cb({ error: 'Invalid persistent ID' });
 
-    if (!persistentId || persistentId.length < 5) {
-      return cb({ error: 'Invalid persistent ID' });
-    }
-
-    // Отключаем старый сокет с этим persistentId
     for (const [sid, u] of users) {
       if (u.userId === persistentId && sid !== socket.id) {
         const oldSocket = io.sockets.sockets.get(sid);
-        if (oldSocket) {
-          log('🔄', `Disconnecting duplicate socket: ${sid} for ${persistentId}`);
-          oldSocket.disconnect(true);
-        }
+        if (oldSocket) { log('🔄', `Disconnecting duplicate: ${sid}`); try { oldSocket.disconnect(true); } catch(e) {} }
       }
     }
 
     socket._userId = persistentId;
     socket._registered = true;
-
     cb({ success: true, userId: persistentId });
     log('✅', `Registered: ${socket.id} → ${persistentId}`);
-  });
+  }));
 
   // Rate limiter + security
   socket.use((packet, next) => {
-    if (!socket._registered && packet[0] !== 'register-persistent') {
-      return next(new Error('Not registered'));
+    try {
+      if (!socket._registered && packet[0] !== 'register-persistent') return next(new Error('Not registered'));
+      if (!checkSocketRate(socket.id)) return next(new Error('Rate limit'));
+      const packetStr = JSON.stringify(packet);
+      if (packetStr.length > CONFIG.limits.MAX_PAYLOAD_SIZE) {
+        securityLog('PAYLOAD_TOO_LARGE', { socketId: socket.id, size: packetStr.length });
+        return next(new Error('Payload too large'));
+      }
+      const data = packet[1];
+      if (data && typeof data === 'object') { delete data.__proto__; delete data.constructor; delete data.prototype; }
+      next();
+    } catch (err) {
+      console.error('❌ Middleware error:', err);
+      next(new Error('Security check failed'));
     }
-    if (!checkSocketRate(socket.id)) return next(new Error('Rate limit'));
-    if (JSON.stringify(packet).length > CONFIG.limits.MAX_PAYLOAD_SIZE) {
-      securityLog('PAYLOAD_TOO_LARGE', { socketId: socket.id, size: JSON.stringify(packet).length });
-      return next(new Error('Payload too large'));
-    }
-    const data = packet[1];
-    if (data && typeof data === 'object') { delete data.__proto__; delete data.constructor; delete data.prototype; }
-    next();
   });
 
-  // ─────────────────────────────────────────────────────────
-  // CHANNEL: Create
-  // ─────────────────────────────────────────────────────────
-  socket.on('create-channel', (rawData, cb) => {
+  // ── CHANNEL: Create ──
+  socket.on('create-channel', safeHandler('create-channel', (rawData, cb) => {
     const data = safeData(rawData);
     const userId = socket._userId;
     const channelName = sanitize(data.channelName, CONFIG.limits.MAX_CHANNEL_NAME_LENGTH);
@@ -298,7 +363,6 @@ io.on('connection', (socket) => {
 
     let userCount = 0;
     channels.forEach(ch => { if (ch.admin === userId) userCount++; });
-
     if (channels.size >= CONFIG.limits.MAX_CHANNELS) return cb({ error: 'Server limit reached' });
     if (userCount >= CONFIG.limits.MAX_CHANNELS_PER_USER) return cb({ error: `Limit: ${CONFIG.limits.MAX_CHANNELS_PER_USER} per user` });
     if (!channelName) return cb({ error: 'Name required' });
@@ -310,6 +374,7 @@ io.on('connection', (socket) => {
       speakers: new Map([[userId, { userId, name: userName, socketId: socket.id }]]),
       listeners: new Map(), messages: [],
       joinRequests: new Map(), raisedHands: new Set(),
+      recentlyApproved: new Map(),
       userLikes: new Map(), totalLikes: 0,
       created: Date.now()
     });
@@ -320,12 +385,10 @@ io.on('connection', (socket) => {
     log('📢', `Created: "${channelName}" (${channelId}) by ${userName}`);
     cb({ success: true, channelId });
     io.emit('channels-updated');
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // CHANNEL: Join
-  // ─────────────────────────────────────────────────────────
-  socket.on('join-channel', (rawData, cb) => {
+  // ── CHANNEL: Join ──
+  socket.on('join-channel', safeHandler('join-channel', (rawData, cb) => {
     const data = safeData(rawData);
     const userId = socket._userId;
     const userName = sanitize(data.userName, CONFIG.limits.MAX_NAME_LENGTH) || 'Anonymous';
@@ -335,7 +398,7 @@ io.on('connection', (socket) => {
 
     const channelBans = bans.get(channelId);
     if (channelBans) {
-      if (channelBans.users.has(userId)) {
+      if (channelBans.users && channelBans.users.has(userId)) {
         const until = channelBans.users.get(userId);
         if (Date.now() < until) return cb({ error: `Banned. ${Math.ceil((until - Date.now()) / 60000)} min left` });
         channelBans.users.delete(userId);
@@ -367,7 +430,6 @@ io.on('connection', (socket) => {
     const speakersList = Array.from(channel.speakers.entries()).map(([uid, s]) => ({ userId: uid, name: s.name }));
     const listenersList = Array.from(channel.listeners.entries()).map(([uid, l]) => ({ userId: uid, name: l.name }));
 
-    // Актуальные raised hands и join requests для админа
     const raisedHandsList = role === 'admin' ? Array.from(channel.raisedHands).map(uid => {
       const s = channel.speakers.get(uid); const l = channel.listeners.get(uid);
       return { userId: uid, userName: s?.name || l?.name || 'User', timestamp: Date.now() };
@@ -392,40 +454,39 @@ io.on('connection', (socket) => {
     socket.to(channelId).emit('user-joined', { userId, userName: uniqueName, role });
     if (nameChanged) socket.emit('name-changed-by-server', { newName: uniqueName, reason: 'Name taken' });
     log('👤', `${uniqueName} → "${channel.name}" as ${role} [${total + 1}/${CONFIG.limits.MAX_USERS}]`);
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // CHANNEL: List
-  // ─────────────────────────────────────────────────────────
-  socket.on('get-channels', (cb) => {
+  // ── CHANNEL: List ──
+  socket.on('get-channels', safeHandler('get-channels', (cb) => {
     const list = [];
     channels.forEach((ch, id) => {
       list.push({ id, name: ch.name, admin: ch.adminName, adminId: ch.admin, speakers: ch.speakers.size, listeners: ch.listeners.size, totalLikes: ch.totalLikes || 0 });
     });
     cb(list);
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // CHANNEL: Join Request (с защитой от дублей)
-  // ─────────────────────────────────────────────────────────
-  socket.on('request-join', (rawData, cb) => {
+  // ── CHANNEL: Join Request ──
+  socket.on('request-join', safeHandler('request-join', (rawData, cb) => {
     const data = safeData(rawData);
     const userId = socket._userId;
     const channelId = sanitize(data.channelId, 20);
     const channel = channels.get(channelId);
     if (!channel) return cb({ error: 'Channel not found' });
 
-    // Админ/спикер — сразу впускаем
     if (channel.admin === userId) return cb({ approved: true });
     if (channel.speakers.has(userId)) return cb({ approved: true });
-    if (!channel.requireApproval) return cb({ approved: true });
+    if (channel.listeners.has(userId)) return cb({ approved: true });
 
-    // ✅ Защита от дублирования: если запрос уже есть — не создаём новый
-    if (channel.joinRequests.has(userId)) {
-      return cb({ approved: false, message: 'Request already pending' });
+    if (channel.recentlyApproved && channel.recentlyApproved.has(userId)) {
+      const expiresAt = channel.recentlyApproved.get(userId);
+      if (Date.now() < expiresAt) return cb({ approved: true, message: 'Already approved' });
+      channel.recentlyApproved.delete(userId);
     }
 
-    // Сохраняем запрос с socketId
+    if (!channel.requireApproval) return cb({ approved: true });
+
+    if (channel.joinRequests.has(userId)) return cb({ approved: false, message: 'Request already pending' });
+
     channel.joinRequests.set(userId, {
       userId,
       userName: sanitize(data.userName, 20),
@@ -433,22 +494,15 @@ io.on('connection', (socket) => {
       timestamp: Date.now()
     });
 
-    // Уведомляем админа
     const adminSocket = findUser(channel.admin);
     if (adminSocket) {
-      io.to(adminSocket.socketId).emit('join-request', {
-        userId, userName: data.userName, channelId, timestamp: Date.now()
-      });
+      try { io.to(adminSocket.socketId).emit('join-request', { userId, userName: data.userName, channelId, timestamp: Date.now() }); } catch(e) {}
     }
-
     cb({ approved: false, message: 'Request sent to admin' });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // CHANNEL: Respond to Join Request
-  // ─────────────────────────────────────────────────────────
-  // ── respond-join-request (шлём ВСЕМ в канале, не только себе) ──
-  socket.on('respond-join-request', (rawData, cb) => {
+  // ── CHANNEL: Respond to Join Request ──
+  socket.on('respond-join-request', safeHandler('respond-join-request', (rawData, cb) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData) return cb({ error: 'Not connected' });
@@ -456,74 +510,40 @@ io.on('connection', (socket) => {
     if (!channel) return cb({ error: 'Channel not found' });
     if (channel.admin !== userData.userId) return cb({ error: 'Admin only' });
     if (!data.targetUserId) return cb({ error: 'Missing targetUserId' });
-  
+
     if (!channel.joinRequests.has(data.targetUserId)) {
-      // ✅ Шлём ВСЕМ в канале (не только себе)
-      io.to(userData.channelId).emit('join-request-removed', { userId: data.targetUserId });
+      try { io.to(userData.channelId).emit('join-request-removed', { userId: data.targetUserId }); } catch(e) {}
       return cb({ success: true });
     }
-  
+
     const request = channel.joinRequests.get(data.targetUserId);
     channel.joinRequests.delete(data.targetUserId);
-  
-    // Отвечаем пользователю
+
+    if (!channel.recentlyApproved) channel.recentlyApproved = new Map();
+    if (data.approved) channel.recentlyApproved.set(data.targetUserId, Date.now() + 10000);
+
+    let delivered = false;
     if (request.socketId) {
       const targetSocket = io.sockets.sockets.get(request.socketId);
       if (targetSocket && targetSocket.connected) {
-        targetSocket.emit('join-request-response', {
-          approved: !!data.approved,
-          channelId: userData.channelId
-        });
+        try { targetSocket.emit('join-request-response', { approved: !!data.approved, channelId: userData.channelId }); delivered = true; } catch(e) {}
       }
     }
-    const target = findUser(data.targetUserId);
-    if (target) {
-      io.to(target.socketId).emit('join-request-response', {
-        approved: !!data.approved,
-        channelId: userData.channelId
-      });
+    if (!delivered) {
+      const target = findUser(data.targetUserId);
+      if (target) {
+        try { io.to(target.socketId).emit('join-request-response', { approved: !!data.approved, channelId: userData.channelId }); } catch(e) {}
+      }
     }
-  
-    // ✅ Шлём ВСЕМ в канале (все админы увидят удаление)
-    io.to(userData.channelId).emit('join-request-removed', { userId: data.targetUserId });
-  
+
+    try { io.to(userData.channelId).emit('join-request-removed', { userId: data.targetUserId }); } catch(e) {}
+
     log(data.approved ? '✅' : '❌', `Join ${data.approved ? 'approved' : 'denied'}: ${request.userName} in "${channel.name}"`);
     cb({ success: true });
-  });
-  
-  // ── make-speaker (удаляем из raisedHands у ВСЕХ) ──
-  socket.on('make-speaker', (rawData, cb) => {
-    const data = safeData(rawData);
-    const userData = users.get(socket.id);
-    const channel = channels.get(userData?.channelId);
-    if (!channel || channel.admin !== userData.userId) return cb({ error: 'Admin only' });
-    if (channel.speakers.size >= CONFIG.limits.MAX_SPEAKERS) return cb({ error: `Max ${CONFIG.limits.MAX_SPEAKERS}` });
-  
-    const listener = channel.listeners.get(data.targetUserId);
-    if (!listener) return cb({ error: 'Not found' });
-  
-    channel.listeners.delete(data.targetUserId);
-    channel.speakers.set(data.targetUserId, { userId: data.targetUserId, name: listener.name, socketId: listener.socketId });
-  
-    // ✅ Удаляем из raisedHands НА СЕРВЕРЕ
-    channel.raisedHands.delete(data.targetUserId);
-    raisedHandsTime.delete(data.targetUserId); // если есть
-  
-    const target = findUser(data.targetUserId);
-    if (target) users.get(target.socketId).role = 'speaker';
-  
-    // ✅ Шлём role-changed и hand-lowered ВСЕМ (админ тоже получает)
-    io.to(userData.channelId).emit('role-changed', { userId: data.targetUserId, role: 'speaker', userName: listener.name });
-    io.to(userData.channelId).emit('hand-lowered', { userId: data.targetUserId });
-  
-    log('🎤', `${listener.name} → speaker in "${channel.name}"`);
-    cb({ success: true });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // GET JOIN REQUESTS (для админа при входе)
-  // ─────────────────────────────────────────────────────────
-  socket.on('get-join-requests', (rawData, cb) => {
+  // ── GET JOIN REQUESTS ──
+  socket.on('get-join-requests', safeHandler('get-join-requests', (rawData, cb) => {
     const userData = users.get(socket.id);
     if (!userData) return cb([]);
     const channel = channels.get(userData.channelId);
@@ -533,12 +553,10 @@ io.on('connection', (socket) => {
       userId, userName: req.userName, timestamp: req.timestamp
     }));
     cb(list);
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // GET RAISED HANDS (для админа при входе)
-  // ─────────────────────────────────────────────────────────
-  socket.on('get-raised-hands', (rawData, cb) => {
+  // ── GET RAISED HANDS ──
+  socket.on('get-raised-hands', safeHandler('get-raised-hands', (rawData, cb) => {
     const userData = users.get(socket.id);
     if (!userData) return cb([]);
     const channel = channels.get(userData.channelId);
@@ -550,12 +568,10 @@ io.on('connection', (socket) => {
       return { userId, userName: s?.name || l?.name || 'User', timestamp: Date.now() };
     });
     cb(list);
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // CHANNEL: Switch (multi-channel)
-  // ─────────────────────────────────────────────────────────
-  socket.on('switch-channel', (rawData, cb) => {
+  // ── CHANNEL: Switch ──
+  socket.on('switch-channel', safeHandler('switch-channel', (rawData, cb) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData) return cb({ error: 'Not connected' });
@@ -566,7 +582,7 @@ io.on('connection', (socket) => {
     const oldId = userData.channelId;
     if (oldId && oldId !== newId) {
       socket.leave(oldId);
-      socket.to(oldId).emit('user-away', { userId: userData.userId, userName: userData.userName });
+      try { socket.to(oldId).emit('user-away', { userId: userData.userId, userName: userData.userName }); } catch(e) {}
     }
     socket.join(newId);
     userData.channelId = newId;
@@ -576,14 +592,12 @@ io.on('connection', (socket) => {
     else if (newChannel.speakers.has(userData.userId)) role = 'speaker';
     userData.role = role;
 
-    socket.to(newId).emit('user-back', { userId: userData.userId, userName: userData.userName, role });
+    try { socket.to(newId).emit('user-back', { userId: userData.userId, userName: userData.userName, role }); } catch(e) {}
     cb({ success: true, channelId: newId, role });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // TEXT CHAT
-  // ─────────────────────────────────────────────────────────
-  socket.on('send-message', (rawData) => {
+  // ── TEXT CHAT ──
+  socket.on('send-message', safeHandler('send-message', (rawData) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData || !checkMessageRate(userData.userId)) return;
@@ -595,12 +609,10 @@ io.on('connection', (socket) => {
     channel.messages.push(msg);
     if (channel.messages.length > CONFIG.limits.MESSAGE_HISTORY) channel.messages.shift();
     io.to(userData.channelId).emit('new-message', msg);
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // USER: Rename
-  // ─────────────────────────────────────────────────────────
-  socket.on('update-username', (rawData, cb) => {
+  // ── USER: Rename ──
+  socket.on('update-username', safeHandler('update-username', (rawData, cb) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData) return cb({ error: 'Not in channel' });
@@ -618,12 +630,10 @@ io.on('connection', (socket) => {
     io.to(userData.channelId).emit('user-renamed', { userId: userData.userId, oldName, newName: uniqueName });
     cb({ success: true, newName: uniqueName, nameChanged });
     if (nameChanged) socket.emit('name-changed-by-server', { newName: uniqueName, reason: 'Name taken' });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // USER: Make Speaker (с hand-lowered + role-changed всем)
-  // ─────────────────────────────────────────────────────────
-  socket.on('make-speaker', (rawData, cb) => {
+  // ── USER: Make Speaker ──
+  socket.on('make-speaker', safeHandler('make-speaker', (rawData, cb) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     const channel = channels.get(userData?.channelId);
@@ -636,24 +646,20 @@ io.on('connection', (socket) => {
     channel.listeners.delete(data.targetUserId);
     channel.speakers.set(data.targetUserId, { userId: data.targetUserId, name: listener.name, socketId: listener.socketId });
 
-    // Опускаем руку
     channel.raisedHands.delete(data.targetUserId);
 
     const target = findUser(data.targetUserId);
     if (target) users.get(target.socketId).role = 'speaker';
 
-    // ✅ Уведомляем ВСЕХ в канале (не только админа)
     io.to(userData.channelId).emit('role-changed', { userId: data.targetUserId, role: 'speaker', userName: listener.name });
     io.to(userData.channelId).emit('hand-lowered', { userId: data.targetUserId });
 
     log('🎤', `${listener.name} → speaker in "${channel.name}"`);
     cb({ success: true });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // USER: Remove Speaker
-  // ─────────────────────────────────────────────────────────
-  socket.on('remove-speaker', (rawData, cb) => {
+  // ── USER: Remove Speaker ──
+  socket.on('remove-speaker', safeHandler('remove-speaker', (rawData, cb) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     const channel = channels.get(userData?.channelId);
@@ -669,35 +675,34 @@ io.on('connection', (socket) => {
     const target = findUser(data.targetUserId);
     if (target) users.get(target.socketId).role = 'listener';
 
-    // ✅ Уведомляем ВСЕХ
     io.to(userData.channelId).emit('role-changed', { userId: data.targetUserId, role: 'listener', userName: speaker.name });
-
     log('🔇', `${speaker.name} → listener in "${channel.name}"`);
     cb({ success: true });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // USER: Kick
-  // ─────────────────────────────────────────────────────────
-  socket.on('kick-user', (rawData, cb) => {
+  // ── USER: Kick ──
+  socket.on('kick-user', safeHandler('kick-user', (rawData, cb) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     const channel = channels.get(userData?.channelId);
     if (!channel || channel.admin !== userData.userId) return cb({ error: 'Admin only' });
     const target = findUser(data.targetUserId);
-    if (target) { io.to(target.socketId).emit('kicked', { reason: sanitize(data.reason, 100) || 'Kicked' }); io.sockets.sockets.get(target.socketId)?.disconnect(); }
+    if (target) {
+      try { io.to(target.socketId).emit('kicked', { reason: sanitize(data.reason, 100) || 'Kicked' }); } catch(e) {}
+      try { io.sockets.sockets.get(target.socketId)?.disconnect(); } catch(e) {}
+    }
     const name = channel.speakers.get(data.targetUserId)?.name || channel.listeners.get(data.targetUserId)?.name || 'User';
-    channel.speakers.delete(data.targetUserId); channel.listeners.delete(data.targetUserId); channel.raisedHands.delete(data.targetUserId);
+    channel.speakers.delete(data.targetUserId);
+    channel.listeners.delete(data.targetUserId);
+    channel.raisedHands.delete(data.targetUserId);
     channelSpeaking.get(userData.channelId)?.delete(data.targetUserId);
     channelScreenShare.get(userData.channelId)?.delete(data.targetUserId);
     io.to(userData.channelId).emit('user-left', { userId: data.targetUserId, userName: name });
     cb({ success: true });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // USER: Ban
-  // ─────────────────────────────────────────────────────────
-  socket.on('ban-user', (rawData, cb) => {
+  // ── USER: Ban ──
+  socket.on('ban-user', safeHandler('ban-user', (rawData, cb) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     const channel = channels.get(userData?.channelId);
@@ -709,22 +714,22 @@ io.on('connection', (socket) => {
     if (targetSocket) {
       const targetIp = io.sockets.sockets.get(targetSocket.socketId)?._clientIp;
       if (targetIp) channelBans.ips.set(targetIp, until);
-      io.to(targetSocket.socketId).emit('banned', { until, reason: sanitize(data.reason, 100) || 'Banned 30 min' });
-      io.sockets.sockets.get(targetSocket.socketId)?.disconnect();
+      try { io.to(targetSocket.socketId).emit('banned', { until, reason: sanitize(data.reason, 100) || 'Banned 30 min' }); } catch(e) {}
+      try { io.sockets.sockets.get(targetSocket.socketId)?.disconnect(); } catch(e) {}
     }
     const name = channel.speakers.get(data.targetUserId)?.name || channel.listeners.get(data.targetUserId)?.name || 'User';
-    channel.speakers.delete(data.targetUserId); channel.listeners.delete(data.targetUserId); channel.raisedHands.delete(data.targetUserId);
+    channel.speakers.delete(data.targetUserId);
+    channel.listeners.delete(data.targetUserId);
+    channel.raisedHands.delete(data.targetUserId);
     channelSpeaking.get(userData.channelId)?.delete(data.targetUserId);
     channelScreenShare.get(userData.channelId)?.delete(data.targetUserId);
     io.to(userData.channelId).emit('user-banned', { userId: data.targetUserId, userName: name, until });
     log('🔒', `${name} banned in "${channel.name}"`);
     cb({ success: true });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // USER: Transfer Admin
-  // ─────────────────────────────────────────────────────────
-  socket.on('transfer-admin', (rawData, cb) => {
+  // ── USER: Transfer Admin ──
+  socket.on('transfer-admin', safeHandler('transfer-admin', (rawData, cb) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     const channel = channels.get(userData?.channelId);
@@ -732,18 +737,20 @@ io.on('connection', (socket) => {
     const target = channel.speakers.get(data.targetUserId) || channel.listeners.get(data.targetUserId);
     if (!target) return cb({ error: 'Not found' });
     const oldAdminId = channel.admin;
-    channel.admin = data.targetUserId; channel.adminName = target.name;
-    if (channel.listeners.has(data.targetUserId)) { channel.speakers.set(data.targetUserId, channel.listeners.get(data.targetUserId)); channel.listeners.delete(data.targetUserId); }
+    channel.admin = data.targetUserId;
+    channel.adminName = target.name;
+    if (channel.listeners.has(data.targetUserId)) {
+      channel.speakers.set(data.targetUserId, channel.listeners.get(data.targetUserId));
+      channel.listeners.delete(data.targetUserId);
+    }
     const ns = findUser(data.targetUserId); if (ns) users.get(ns.socketId).role = 'admin';
     const os = findUser(oldAdminId); if (os) users.get(os.socketId).role = 'speaker';
     io.to(userData.channelId).emit('admin-transferred', { oldAdminId, newAdminId: data.targetUserId, newAdminName: target.name });
     cb({ success: true });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // SPEAKING STATUS
-  // ─────────────────────────────────────────────────────────
-  socket.on('speaking-status', (rawData) => {
+  // ── SPEAKING STATUS ──
+  socket.on('speaking-status', safeHandler('speaking-status', (rawData) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData) return;
@@ -752,85 +759,72 @@ io.on('connection', (socket) => {
     if (data.isSpeaking) channelSpeaking.get(chId).add(userData.userId);
     else channelSpeaking.get(chId).delete(userData.userId);
     socket.to(chId).emit('user-speaking', { userId: userData.userId, userName: userData.userName, isSpeaking: !!data.isSpeaking });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // SCREEN SHARE / CAMERA
-  // ─────────────────────────────────────────────────────────
-  socket.on('screen-share-start', (rawData) => {
+  // ── SCREEN SHARE / CAMERA ──
+  socket.on('screen-share-start', safeHandler('screen-share-start', (rawData) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData) return;
     const chId = userData.channelId;
     if (!channelScreenShare.has(chId)) channelScreenShare.set(chId, new Set());
     channelScreenShare.get(chId).add(userData.userId);
-    // ✅ Отправляем ВСЕМ в канале (кроме себя)
     socket.to(chId).emit('screen-share-started', { userId: userData.userId, userName: userData.userName, mediaType: data.mediaType || 'screen' });
     log('🖥️', `${userData.userName} started ${data.mediaType || 'screen'} in "${channels.get(chId)?.name}"`);
-  });
+  }));
 
-  socket.on('screen-share-stop', () => {
+  socket.on('screen-share-stop', safeHandler('screen-share-stop', () => {
     const userData = users.get(socket.id);
     if (!userData) return;
     channelScreenShare.get(userData.channelId)?.delete(userData.userId);
     socket.to(userData.channelId).emit('screen-share-stopped', { userId: userData.userId });
-  });
-  
-   // ── Request stream resend (когда viewer закрыт) ──
-   socket.on('request-stream-resend', (rawData) => {
-     const data = safeData(rawData);
-     const userData = users.get(socket.id);
-     if (!userData) return;
-   
-     const targetUser = findUser(data.targetUserId);
-     if (!targetUser) return;
-   
-     // Просим стримера переслать offer этому пользователю
-     io.to(targetUser.socketId).emit('stream-resend-requested', {
-       requesterId: userData.userId,
-       requesterSocketId: socket.id
-     });
-   });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // TYPING
-  // ─────────────────────────────────────────────────────────
-  socket.on('typing', (data) => {
+  // ── REQUEST STREAM RESEND ──
+  socket.on('request-stream-resend', safeHandler('request-stream-resend', (rawData) => {
+    const data = safeData(rawData);
+    const userData = users.get(socket.id);
+    if (!userData) return;
+    const targetUser = findUser(data.targetUserId);
+    if (!targetUser) return;
+    try { io.to(targetUser.socketId).emit('stream-resend-requested', { requesterId: userData.userId, requesterSocketId: socket.id }); } catch(e) {}
+  }));
+
+  // ── TYPING ──
+  socket.on('typing', safeHandler('typing', (data) => {
     const userData = users.get(socket.id);
     if (!userData) return;
     socket.to(userData.channelId).emit('user-typing', { userId: userData.userId, userName: userData.userName, isTyping: !!data.isTyping });
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // RAISE HAND
-  // ─────────────────────────────────────────────────────────
-  socket.on('raise-hand', () => {
+  // ── RAISE HAND ──
+  socket.on('raise-hand', safeHandler('raise-hand', () => {
     const userData = users.get(socket.id);
     if (!userData) return;
     const channel = channels.get(userData.channelId);
     if (!channel) return;
-    // Защита от дублей
     if (channel.raisedHands.has(userData.userId)) return;
     channel.raisedHands.add(userData.userId);
-    // Уведомляем только админа
     const admin = findUser(channel.admin);
-    if (admin) io.to(admin.socketId).emit('hand-raised', { userId: userData.userId, userName: userData.userName, timestamp: Date.now() });
-  });
+    if (admin) {
+      try { io.to(admin.socketId).emit('hand-raised', { userId: userData.userId, userName: userData.userName, timestamp: Date.now() }); } catch(e) {}
+    }
+  }));
 
-  socket.on('lower-hand', () => {
+  socket.on('lower-hand', safeHandler('lower-hand', () => {
     const userData = users.get(socket.id);
     if (!userData) return;
     const channel = channels.get(userData.channelId);
     if (!channel) return;
     channel.raisedHands.delete(userData.userId);
     const admin = findUser(channel.admin);
-    if (admin) io.to(admin.socketId).emit('hand-lowered', { userId: userData.userId });
-  });
+    if (admin) {
+      try { io.to(admin.socketId).emit('hand-lowered', { userId: userData.userId }); } catch(e) {}
+    }
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // LIKES
-  // ─────────────────────────────────────────────────────────
-  socket.on('send-like', (rawData) => {
+  // ── LIKES ──
+  socket.on('send-like', safeHandler('send-like', (rawData) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData) return;
@@ -848,12 +842,10 @@ io.on('connection', (socket) => {
       channelLikes.set(chId, (channelLikes.get(chId) || 0) + 1);
       socket.to(chId).emit('receive-like', { userId: userData.userId, userName: userData.userName, targetUserId: targetId, count: current + 1 });
     }
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // VOTE TO KICK
-  // ─────────────────────────────────────────────────────────
-  socket.on('start-vote', (rawData, cb) => {
+  // ── VOTE TO KICK ──
+  socket.on('start-vote', safeHandler('start-vote', (rawData, cb) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     const channel = channels.get(userData?.channelId);
@@ -864,9 +856,9 @@ io.on('connection', (socket) => {
     io.to(userData.channelId).emit('vote-started', { voteId, targetUserId: data.targetUserId, targetName: data.targetName, expiresAt: Date.now() + CONFIG.limits.VOTE_DURATION });
     setTimeout(() => finishVote(voteId), CONFIG.limits.VOTE_DURATION);
     cb({ success: true, voteId });
-  });
+  }));
 
-  socket.on('cast-vote', (rawData) => {
+  socket.on('cast-vote', safeHandler('cast-vote', (rawData) => {
     const data = safeData(rawData);
     const vote = votes.get(data.voteId);
     if (!vote) return;
@@ -878,39 +870,44 @@ io.on('connection', (socket) => {
     if (data.vote === 'yes') { vote.yes.add(userData.userId); vote.no.delete(userData.userId); }
     else { vote.no.add(userData.userId); vote.yes.delete(userData.userId); }
     io.to(vote.channelId).emit('vote-updated', { voteId: vote.id, yes: vote.yes.size, no: vote.no.size });
-  });
+  }));
 
   function finishVote(voteId) {
-    const vote = votes.get(voteId);
-    if (!vote) return;
-    const channel = channels.get(vote.channelId);
-    if (!channel) { votes.delete(voteId); return; }
-    const total = channel.speakers.size + channel.listeners.size;
-    const needed = Math.max(2, Math.ceil(total * CONFIG.limits.VOTE_THRESHOLD));
-    if (vote.yes.size >= needed) {
-      const target = findUser(vote.targetUserId);
-      if (target) { io.to(target.socketId).emit('kicked', { reason: 'Community vote' }); io.sockets.sockets.get(target.socketId)?.disconnect(); }
-      channel.speakers.delete(vote.targetUserId); channel.listeners.delete(vote.targetUserId); channel.raisedHands.delete(vote.targetUserId);
-      channelSpeaking.get(vote.channelId)?.delete(vote.targetUserId);
-      channelScreenShare.get(vote.channelId)?.delete(vote.targetUserId);
-      io.to(vote.channelId).emit('vote-result', { voteId, kicked: true, targetName: vote.targetName });
-    } else {
-      io.to(vote.channelId).emit('vote-result', { voteId, kicked: false, targetName: vote.targetName });
+    try {
+      const vote = votes.get(voteId);
+      if (!vote) return;
+      const channel = channels.get(vote.channelId);
+      if (!channel) { votes.delete(voteId); return; }
+      const total = channel.speakers.size + channel.listeners.size;
+      const needed = Math.max(2, Math.ceil(total * CONFIG.limits.VOTE_THRESHOLD));
+      if (vote.yes.size >= needed) {
+        const target = findUser(vote.targetUserId);
+        if (target) {
+          try { io.to(target.socketId).emit('kicked', { reason: 'Community vote' }); } catch(e) {}
+          try { io.sockets.sockets.get(target.socketId)?.disconnect(); } catch(e) {}
+        }
+        channel.speakers.delete(vote.targetUserId);
+        channel.listeners.delete(vote.targetUserId);
+        channel.raisedHands.delete(vote.targetUserId);
+        channelSpeaking.get(vote.channelId)?.delete(vote.targetUserId);
+        channelScreenShare.get(vote.channelId)?.delete(vote.targetUserId);
+        io.to(vote.channelId).emit('vote-result', { voteId, kicked: true, targetName: vote.targetName });
+      } else {
+        io.to(vote.channelId).emit('vote-result', { voteId, kicked: false, targetName: vote.targetName });
+      }
+      votes.delete(voteId);
+    } catch (err) {
+      console.error('❌ finishVote error:', err);
     }
-    votes.delete(voteId);
   }
 
-  // ─────────────────────────────────────────────────────────
-  // WEBRTC SIGNALING
-  // ─────────────────────────────────────────────────────────
-  socket.on('webrtc-offer', (d) => { const t = findUser(d.toUserId); if (t) io.to(t.socketId).emit('webrtc-offer', d); });
-  socket.on('webrtc-answer', (d) => { const t = findUser(d.toUserId); if (t) io.to(t.socketId).emit('webrtc-answer', d); });
-  socket.on('webrtc-ice', (d) => { const t = findUser(d.toUserId); if (t) io.to(t.socketId).emit('webrtc-ice', d); });
+  // ── WEBRTC SIGNALING ──
+  socket.on('webrtc-offer', safeHandler('webrtc-offer', (d) => { const t = findUser(d.toUserId); if (t) io.to(t.socketId).emit('webrtc-offer', d); }));
+  socket.on('webrtc-answer', safeHandler('webrtc-answer', (d) => { const t = findUser(d.toUserId); if (t) io.to(t.socketId).emit('webrtc-answer', d); }));
+  socket.on('webrtc-ice', safeHandler('webrtc-ice', (d) => { const t = findUser(d.toUserId); if (t) io.to(t.socketId).emit('webrtc-ice', d); }));
 
-  // ─────────────────────────────────────────────────────────
-  // BOT API
-  // ─────────────────────────────────────────────────────────
-  socket.on('bot-auth', (rawData, cb) => {
+  // ── BOT API ──
+  socket.on('bot-auth', safeHandler('bot-auth', (rawData, cb) => {
     const data = safeData(rawData);
     if (!CONFIG.security.BOT_TOKENS.includes(data.token)) { securityLog('BOT_AUTH_FAIL', { ip: socket._clientIp }); return cb({ error: 'Invalid token' }); }
     const channel = channels.get(data.channelId);
@@ -923,9 +920,9 @@ io.on('connection', (socket) => {
     socket.to(data.channelId).emit('user-joined', { userId: botId, userName: name, role: 'listener', isBot: true });
     log('🤖', `Bot "${name}" → "${channel.name}"`);
     cb({ success: true, botId, channelId: data.channelId });
-  });
+  }));
 
-  socket.on('bot-message', (rawData) => {
+  socket.on('bot-message', safeHandler('bot-message', (rawData) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData || !userData.isBot) return;
@@ -935,9 +932,9 @@ io.on('connection', (socket) => {
     channel.messages.push(msg);
     if (channel.messages.length > CONFIG.limits.MESSAGE_HISTORY) channel.messages.shift();
     io.to(userData.channelId).emit('new-message', msg);
-  });
+  }));
 
-  socket.on('bot-media', (rawData) => {
+  socket.on('bot-media', safeHandler('bot-media', (rawData) => {
     const data = safeData(rawData);
     const userData = users.get(socket.id);
     if (!userData || !userData.isBot) return;
@@ -947,48 +944,129 @@ io.on('connection', (socket) => {
     channel.messages.push(msg);
     if (channel.messages.length > CONFIG.limits.MESSAGE_HISTORY) channel.messages.shift();
     io.to(userData.channelId).emit('new-message', msg);
-  });
+  }));
 
-  // ─────────────────────────────────────────────────────────
-  // DISCONNECT & CLEANUP
-  // ─────────────────────────────────────────────────────────
+  // ── DISCONNECT ──
   socket.on('disconnect', () => {
-    const ip = socket._clientIp;
-    if (ip) { const count = ipConnections.get(ip) || 1; if (count <= 1) ipConnections.delete(ip); else ipConnections.set(ip, count - 1); }
-    socketRates.delete(socket.id);
+    try {
+      const ip = socket._clientIp;
+      if (ip) { const count = ipConnections.get(ip) || 1; if (count <= 1) ipConnections.delete(ip); else ipConnections.set(ip, count - 1); }
+      socketRates.delete(socket.id);
 
-    const userData = users.get(socket.id);
-    if (!userData) { delete socket._userId; delete socket._clientIp; return; }
+      const userData = users.get(socket.id);
+      if (!userData) return;
 
-    const channel = channels.get(userData.channelId);
-    if (!channel) { users.delete(socket.id); delete socket._userId; delete socket._clientIp; return; }
+      const channel = channels.get(userData.channelId);
+      if (!channel) { users.delete(socket.id); return; }
 
-    if (userData.isBot) {
-      channel.listeners.delete(userData.userId); channel.speakers.delete(userData.userId);
-      socket.to(userData.channelId).emit('user-left', { userId: userData.userId, userName: userData.userName });
-      users.delete(socket.id); delete socket._userId; delete socket._clientIp; return;
+      if (userData.isBot) {
+        channel.listeners.delete(userData.userId);
+        channel.speakers.delete(userData.userId);
+        socket.to(userData.channelId).emit('user-left', { userId: userData.userId, userName: userData.userName });
+        users.delete(socket.id);
+        return;
+      }
+
+      channel.speakers.delete(userData.userId);
+      channel.listeners.delete(userData.userId);
+      channel.raisedHands.delete(userData.userId);
+      if (channel.joinRequests) channel.joinRequests.delete(userData.userId);
+      if (channel.recentlyApproved) channel.recentlyApproved.delete(userData.userId);
+      channelSpeaking.get(userData.channelId)?.delete(userData.userId);
+      channelScreenShare.get(userData.channelId)?.delete(userData.userId);
+
+      if (channel.speakers.size === 0 && channel.listeners.size === 0) {
+        channels.delete(userData.channelId);
+        bans.delete(userData.channelId);
+        channelSpeaking.delete(userData.channelId);
+        channelScreenShare.delete(userData.channelId);
+        channelLikes.delete(userData.channelId);
+        io.emit('channels-updated');
+        log('🗑️', `"${channel.name}" destroyed [${channels.size} active]`);
+      } else {
+        socket.to(userData.channelId).emit('user-left', { userId: userData.userId, userName: userData.userName });
+      }
+
+      users.delete(socket.id);
+      messageRates.delete(userData.userId);
+      log('❌', `${userData.userName} left [${users.size} online]`);
+    } catch (err) {
+      console.error('❌ disconnect error:', err);
     }
-
-    channel.speakers.delete(userData.userId); channel.listeners.delete(userData.userId);
-    channel.raisedHands.delete(userData.userId);
-    if (channel.joinRequests) channel.joinRequests.delete(userData.userId);
-    channelSpeaking.get(userData.channelId)?.delete(userData.userId);
-    channelScreenShare.get(userData.channelId)?.delete(userData.userId);
-
-    if (channel.speakers.size === 0 && channel.listeners.size === 0) {
-      channels.delete(userData.channelId); bans.delete(userData.channelId);
-      channelSpeaking.delete(userData.channelId); channelScreenShare.delete(userData.channelId); channelLikes.delete(userData.channelId);
-      io.emit('channels-updated');
-      log('🗑️', `"${channel.name}" destroyed [${channels.size} active]`);
-    } else {
-      socket.to(userData.channelId).emit('user-left', { userId: userData.userId, userName: userData.userName });
-    }
-
-    users.delete(socket.id); messageRates.delete(userData.userId);
-    delete socket._userId; delete socket._clientIp;
-    log('❌', `${userData.userName} left [${users.size} online]`);
   });
-});
+
+  // ── CHANNEL: Close (Admin only) ── ✅ ВНУТРИ io.on('connection')
+  socket.on('close-channel', safeHandler('close-channel', (rawData, cb) => {
+    const userData = users.get(socket.id);
+    if (!userData) return cb({ error: 'Not connected' });
+    
+    const channel = channels.get(userData.channelId);
+    if (!channel) return cb({ error: 'Channel not found' });
+    if (channel.admin !== userData.userId) return cb({ error: 'Admin only' });
+    
+    const channelName = channel.name;
+    const channelId = userData.channelId;
+    
+    // Собираем всех пользователей (кроме админа)
+    const allUsers = [];
+    channel.speakers.forEach((s, uid) => { if (uid !== userData.userId) allUsers.push(uid); });
+    channel.listeners.forEach((l, uid) => { if (uid !== userData.userId) allUsers.push(uid); });
+    
+    // Уведомляем ВСЕХ гостей что канал закрыт
+    allUsers.forEach(uid => {
+      const target = findUser(uid);
+      if (target) {
+        try {
+          io.to(target.socketId).emit('channel-closed', {
+            channelName,
+            closedBy: userData.userName,
+            reason: 'Admin closed the channel'
+          });
+        } catch(e) {}
+      }
+    });
+    
+    // Удаляем всех из socket room и очищаем их состояние
+    allUsers.forEach(uid => {
+      const target = findUser(uid);
+      if (target) {
+        const targetSocket = io.sockets.sockets.get(target.socketId);
+        if (targetSocket) {
+          targetSocket.leave(channelId);
+          const targetData = users.get(target.socketId);
+          if (targetData) {
+            targetData.channelId = null;
+            targetData.role = null;
+          }
+        }
+      }
+    });
+    
+    // Полная очистка канала
+    channels.delete(channelId);
+    bans.delete(channelId);
+    channelSpeaking.delete(channelId);
+    channelScreenShare.delete(channelId);
+    channelLikes.delete(channelId);
+    
+    // Удаляем связанные голоса
+    votes.forEach((v, vid) => {
+      if (v.channelId === channelId) votes.delete(vid);
+    });
+    
+    // Админ остаётся онлайн но без канала
+    userData.channelId = null;
+    userData.role = null;
+    socket.leave(channelId);
+    
+    io.emit('channels-updated');
+    
+    log('🚪', `Channel "${channelName}" closed by admin ${userData.userName}. Kicked ${allUsers.length} user(s)`);
+    
+    cb({ success: true, kicked: allUsers.length });
+  }));
+
+});  // ← ЗАКРЫТИЕ io.on('connection')
 
 // ═══════════════════════════════════════════════════════════
 // START
@@ -997,7 +1075,7 @@ io.on('connection', (socket) => {
 server.listen(CONFIG.port, CONFIG.host, () => {
   console.log('');
   console.log('  ┌─────────────────────────────────────────────────┐');
-  console.log('  │   PageChat Radio Pro — Server v3.1 (Hardened)   │');
+  console.log('  │   PageChat Radio Pro — Server v3.3 (Protected)  │');
   console.log('  └─────────────────────────────────────────────────┘');
   console.log('');
   console.log(`  Port:         ${CONFIG.port}`);
@@ -1011,11 +1089,7 @@ server.listen(CONFIG.port, CONFIG.host, () => {
   console.log(`  Status:       http://localhost:${CONFIG.port}`);
   console.log(`  Client:       ws://YOUR_IP:${CONFIG.port}`);
   console.log('');
-  console.log('  Security: Persistent IDs, IP bans, CORS lock,');
-  console.log('            rate limiting, prototype pollution guard.');
-  console.log('');
-  console.log('  Voice is P2P. This server never hears you.');
+  console.log('  🛡️  Crash protection: ENABLED');
+  console.log('  Voice is P2P. Server never hears you.');
   console.log('');
 });
-
-process.on('SIGINT', () => { log('🛑', 'Shutting down...'); io.close(); server.close(() => { log('✅', 'Closed.'); process.exit(0); }); });
