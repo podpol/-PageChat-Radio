@@ -1,5 +1,9 @@
+<img width="978" height="513" alt="2026-07-22_111021" src="https://github.com/user-attachments/assets/acbc61d6-ebd1-40d3-a108-cd0c5028e9b9" />
+
 # -PageChat-Radio
-PageChat Radio Pro — secure voice &amp; text radio for clans and communities.
+PageChat Radio Pro — secure voice &amp; text radio for clans and communities. (This is an a server for Google chrome extension)
+<img width="377" height="407" alt="2026-07-22_110823" src="https://github.com/user-attachments/assets/7e84f0a2-293f-4118-b1af-ef317baaf9db" />
+
 <p align="center">
   <h1 align="center">PageChat Radio Pro</h1>
   <p align="center">
