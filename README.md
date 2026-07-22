@@ -2,7 +2,14 @@
 
 # -PageChat-Radio
 PageChat Radio Pro — secure voice &amp; text radio for clans and communities. (This is an a server for Google chrome extension)
-<img width="377" height="407" alt="2026-07-22_110823" src="https://github.com/user-attachments/assets/7e84f0a2-293f-4118-b1af-ef317baaf9db" />
+---
+<img width="640" height="400" alt="2026-07-22_223534" src="https://github.com/user-attachments/assets/06cf5aba-b763-4351-9f4b-c0f825a61fc8" />
+<img width="640" height="400" alt="2026-07-22_223308" src="https://github.com/user-attachments/assets/8dc949a3-6415-4c04-bb35-8ad92f24fad9" />
+<img width="640" height="400" alt="2026-07-22_222931" src="https://github.com/user-attachments/assets/e4dbd133-f51e-416a-bf36-fdb99b59e87b" />
+<img width="640" height="400" alt="2026-07-22_223229" src="https://github.com/user-attachments/assets/23d895dd-4cd9-4be0-bcd5-8b9e3acbff69" />
+
+
+
 
 <p align="center">
   <h1 align="center">PageChat Radio Pro</h1>
