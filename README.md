@@ -1,59 +1,55 @@
-<img width="978" height="513" alt="2026-07-22_111021" src="https://github.com/user-attachments/assets/acbc61d6-ebd1-40d3-a108-cd0c5028e9b9" />
-
-# -PageChat-Radio
-PageChat Radio Pro — secure voice &amp; text radio for clans and communities. (This is an a server for Google chrome extension)
----
-<img width="640" height="400" alt="2026-07-22_223534" src="https://github.com/user-attachments/assets/06cf5aba-b763-4351-9f4b-c0f825a61fc8" />
-<img width="640" height="400" alt="2026-07-22_223308" src="https://github.com/user-attachments/assets/8dc949a3-6415-4c04-bb35-8ad92f24fad9" />
-<img width="640" height="400" alt="2026-07-22_222931" src="https://github.com/user-attachments/assets/e4dbd133-f51e-416a-bf36-fdb99b59e87b" />
-<img width="640" height="400" alt="2026-07-22_223229" src="https://github.com/user-attachments/assets/23d895dd-4cd9-4be0-bcd5-8b9e3acbff69" />
-
-
-
-
 <p align="center">
-  <h1 align="center">PageChat Radio Pro</h1>
+  <h1 align="center">Wave 🌊</h1>
   <p align="center">
-    Secure P2P voice radio for clans and communities.
+    <i>Find your wave. Be on the same wave.</i>
     <br />
-    Works over the internet or local network. No accounts. No tracking.
+    Структурированная P2P голосовая связь для команд, сообществ и друзей.
+    <br />
+    Без аккаунтов. Без слежки. Без хаоса в эфире.
   </p>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat&logo=node.js" />
-  <img src="https://img.shields.io/badge/Chrome-Extension-4285F4?style=flat&logo=google-chrome" />
-  <img src="https://img.shields.io/badge/Voice-WebRTC_P2P-success?style=flat" />
-  <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat" />
+  <img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat&logo=node.js" alt="Node.js" />
+  <img src="https://img.shields.io/badge/Chrome-Extension-4285F4?style=flat&logo=google-chrome" alt="Chrome Extension" />
+  <img src="https://img.shields.io/badge/Voice-WebRTC_P2P-success?style=flat" alt="WebRTC P2P" />
+  <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat" alt="License" />
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/acbc61d6-ebd1-40d3-a108-cd0c5028e9b9" alt="Wave Interface Preview" width="800" />
 </p>
 
 ---
 
-## What is this?
+## 🌊 Что такое Wave?
 
-A structured voice chat where only authorized people speak. Think of it as a radio station: one admin controls who gets the mic, everyone else listens. No chaos, no background noise, no "who's talking?" confusion.
+Представьте, что интернет — это океан, а люди — это корабли. Иногда корабли встречаются, чтобы поговорить, а затем расходятся, возможно, навсегда. 
 
-**The server never hears your voice.** Audio flows directly between browsers via WebRTC. The server only introduces peers to each other.
+**Wave** — это легковесное расширение для браузера, которое превращает любую вкладку в упорядоченную голосовую "рацию". Здесь нет хаоса, перебиваний и фонового шума. Как на настоящем корабле: есть **Капитан** (админ), есть **Штурманы** (те, у кого есть право голоса), и есть **Путники** (слушатели). 
 
----
-
-## Features
-
-- **Roles** — Admin, Speaker (up to 10), Listener (up to 30)
-- **Voice modes** — Push-to-Talk, VOX (voice activation), Toggle, Manual
-- **Text chat** — Emojis, word triggers, blocked words filter
-- **Moderation** — Kick, 30-min ban, vote-to-kick, admin transfer
-- **Privacy** — P2P encrypted audio, no accounts, no logs, no database
-- **Customization** — 11 themes, 8 fonts, 5 languages (EN/RU/UK/ES/DE)
-- **Networks** — Internet or isolated LAN (no internet required)
+**Главное правило:** Сервер (Маяк) никогда не слышит ваш голос. Аудио передается напрямую между браузерами через зашифрованный P2P-канал (WebRTC). Сервер лишь помогает кораблям найти друг друга.
 
 ---
 
-## Architecture
-Browser A (Speaker) ──── P2P Audio (WebRTC) ────► Browser B (Listener)
-│ │
-└────────── Signaling (Socket.io) ───────────────┘
-│
-Node.js Server
-(never touches audio)
+## ⚓ Возможности
 
+- **Четкие роли:** Капитан (1), Штурманы (до 10), Путники (до 30).
+- **Режимы вещания:** Push-to-Talk (нажми и говори), VOX (активация голосом), Переключатель.
+- **Судовой журнал (Чат):** Текстовый чат с поддержкой эмодзи, триггерами слов и авто-скрытием нежелательного контента.
+- **Дисциплина в эфире:** Голосование за изгнание, черный список (бан на 30 мин), передача прав Капитана.
+- **Абсолютная приватность:** Нет регистрации, нет базы данных, нет логов. Ваши разговоры принадлежат только вам.
+- **Кастомизация:** 11 тем оформления (от "Океана" до "Киберпанка"), выбор шрифтов и 5 языков интерфейса.
+- **Гибкость сетей:** Работает как через глобальный интернет, так и в изолированной локальной сети (LAN) без доступа к интернету.
+
+---
+
+## 🗺️ Как это работает (Архитектура)
+
+```text
+  Браузер А (Штурман) ──────── P2P Аудио (WebRTC) ───────► Браузер Б (Путник)
+         │                                                      │
+         └──────────────────── Сигнализация (Socket.io) ────────┘
+                                      │
+                              🗼 Маяк (Node.js Сервер)
+                      (Только знакомит браузеры. Никогда не слышит звук)
