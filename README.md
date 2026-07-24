@@ -3,9 +3,9 @@
   <p align="center">
     <i>Find your wave. Be on the same wave.</i>
     <br />
-    Структурированная P2P голосовая связь для команд, сообществ и друзей.
+    Structured P2P voice radio for teams, communities, and friends.
     <br />
-    Без аккаунтов. Без слежки. Без хаоса в эфире.
+    No accounts. No tracking. No chaos on the airwaves.
   </p>
 </p>
 
@@ -22,34 +22,77 @@
 
 ---
 
-## 🌊 Что такое Wave?
+## 🌊 What is Wave?
 
-Представьте, что интернет — это океан, а люди — это корабли. Иногда корабли встречаются, чтобы поговорить, а затем расходятся, возможно, навсегда. 
+Imagine the internet as an ocean, and people as ships. Sometimes ships meet to talk, and then they sail away, perhaps never to meet again. 
 
-**Wave** — это легковесное расширение для браузера, которое превращает любую вкладку в упорядоченную голосовую "рацию". Здесь нет хаоса, перебиваний и фонового шума. Как на настоящем корабле: есть **Капитан** (админ), есть **Штурманы** (те, у кого есть право голоса), и есть **Путники** (слушатели). 
+**Wave** is a lightweight browser extension that turns any tab into a structured voice "radio station". There is no chaos, no talking over each other, and no background noise. Just like on a real ship: there is a **Captain** (admin), **Navigators** (those with speaking rights), and **Travelers** (listeners). 
 
-**Главное правило:** Сервер (Маяк) никогда не слышит ваш голос. Аудио передается напрямую между браузерами через зашифрованный P2P-канал (WebRTC). Сервер лишь помогает кораблям найти друг друга.
-
----
-
-## ⚓ Возможности
-
-- **Четкие роли:** Капитан (1), Штурманы (до 10), Путники (до 30).
-- **Режимы вещания:** Push-to-Talk (нажми и говори), VOX (активация голосом), Переключатель.
-- **Судовой журнал (Чат):** Текстовый чат с поддержкой эмодзи, триггерами слов и авто-скрытием нежелательного контента.
-- **Дисциплина в эфире:** Голосование за изгнание, черный список (бан на 30 мин), передача прав Капитана.
-- **Абсолютная приватность:** Нет регистрации, нет базы данных, нет логов. Ваши разговоры принадлежат только вам.
-- **Кастомизация:** 11 тем оформления (от "Океана" до "Киберпанка"), выбор шрифтов и 5 языков интерфейса.
-- **Гибкость сетей:** Работает как через глобальный интернет, так и в изолированной локальной сети (LAN) без доступа к интернету.
+**The Golden Rule:** The server (Lighthouse) never hears your voice. Audio flows directly between browsers via an encrypted P2P channel (WebRTC). The server only helps ships find each other.
 
 ---
 
-## 🗺️ Как это работает (Архитектура)
+## ⚓ Features
+
+- **Clear Roles** — Captain (1), Navigators (up to 10), Travelers (up to 30).
+- **Voice Modes** — Push-to-Talk, VOX (voice activation), Toggle, Manual.
+- **Ship's Logbook (Chat)** — Text chat with emojis, word triggers, and auto-hiding of unwanted content.
+- **Airwave Discipline** — Vote-to-kick, 30-minute blacklist (ban), Captain rights transfer.
+- **Absolute Privacy** — No registration, no database, no logs. Your conversations belong only to you.
+- **Customization** — 11 themes (from "Ocean" to "Cyberpunk"), custom fonts, and 5 interface languages.
+- **Network Flexibility** — Works over the global Open Ocean (Internet) or an isolated Local Harbor (LAN) without internet access.
+
+---
+
+## 🗺️ Architecture
 
 ```text
-  Браузер А (Штурман) ──────── P2P Аудио (WebRTC) ───────► Браузер Б (Путник)
+  Browser A (Navigator) ──────── P2P Audio (WebRTC) ───────► Browser B (Traveler)
          │                                                      │
-         └──────────────────── Сигнализация (Socket.io) ────────┘
+         └──────────────────── Signaling (Socket.io) ───────────┘
                                       │
-                              🗼 Маяк (Node.js Сервер)
-                      (Только знакомит браузеры. Никогда не слышит звук)
+                              🗼 Lighthouse (Node.js Server)
+                      (Only introduces browsers. Never touches audio.)
+
+
+## 🧭 Interface Compass (Quick Guide)
+
+| Icon / Button | Action |
+|---------------|--------|
+| ⛵ Set Sail | Create a new Wave. You automatically become its Captain. |
+| 📡 Hail a Ship | Enter an 8-digit code to join an existing Wave. |
+| 🎤 Broadcast | Turn on your microphone (Navigators and Captains only). |
+| ✋ Hand | Raise your hand. The Captain will see your request and may grant you the floor. |
+| ⚓ Drop Anchor | (Captain only) Close the Wave. All crew members are sent to shore. |
+| 🔒/🔓 Wave Mode | (Captain only) Toggle between free boarding and approval-required boarding. |
+
+---
+
+## 🛡️ Privacy & Security
+
+- **Zero-Knowledge:** The server does not store chat history, does not record audio, and does not know who you are.
+- **P2P Encryption:** Voice traffic is protected by standard WebRTC DTLS-SRTP encryption.
+- **Anti-Spam:** Built-in rate limits, flood protection, and a community voting system against disruptors.
+
+---
+
+## 🤝 Support & Community
+
+Found a bug in the compass? Want to suggest a new theme?
+
+- Open an **Issue** on GitHub.
+- We always welcome constructive suggestions to improve the voyage!
+
+---
+
+## 📱 Android App (Coming Soon)
+
+Wave is not just for desktop! We're actively developing an **Android application** that will bring the same P2P voice experience to your mobile devices. The app is currently in development and will be available soon. Stay connected for the announcement!
+
+---
+
+<p align="center">
+  <sub>Made with ❤️ for those who value silence and order on the airwaves.</sub>
+  <br />
+  <sub>License: MIT — Use freely, but remember good manners at sea.</sub>
+</p>
