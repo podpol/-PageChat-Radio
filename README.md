@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/acbc61d6-ebd1-40d3-a108-cd0c5028e9b9" alt="Wave Interface Preview" width="800" />
+<img width="589" height="885" alt="2026-07-24_031611" src="https://github.com/user-attachments/assets/81656d6b-1607-48bd-bfd5-31f86c131447" />
 </p>
 
 ---
@@ -74,6 +74,11 @@ Imagine the internet as an ocean, and people as ships. Sometimes ships meet to t
 - **P2P Encryption:** Voice traffic is protected by standard WebRTC DTLS-SRTP encryption.
 - **Anti-Spam:** Built-in rate limits, flood protection, and a community voting system against disruptors.
 
+<p align="center">
+<img width="464" height="906" alt="2026-07-24_031105" src="https://github.com/user-attachments/assets/0e6657b3-31a5-4995-bec5-0fd1f25982c2" />
+</p>
+
+
 ---
 
 ## 🤝 Support & Community
@@ -88,6 +93,10 @@ Found a bug in the compass? Want to suggest a new theme?
 ## 📱 Android App (Coming Soon)
 
 Wave is not just for desktop! We're actively developing an **Android application** that will bring the same P2P voice experience to your mobile devices. The app is currently in development and will be available soon. Stay connected for the announcement!
+
+<p align="center">
+<img width="435" height="912" alt="2026-07-24_031125" src="https://github.com/user-attachments/assets/b6f42633-aea2-4c5d-a55d-0230da80e3a8" />
+</p>
 
 ---
 
